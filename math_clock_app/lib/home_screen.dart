@@ -1,74 +1,83 @@
 import 'package:flutter/material.dart';
-
-// Import various tab pages
+import 'dart:async';
 import 'clock_tabs/world_clock.dart';
 import 'clock_tabs/alarms.dart';
 import 'clock_tabs/stopwatch.dart';
 import 'clock_tabs/timer.dart';
 
 
-// The Stateful Widget for the home screen
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  // Connect the Stateful Widget to its State object (createState())
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-// A private class to this specific file ('_' prefix)
+
 class _HomeScreenState extends State<HomeScreen> {
 
-  // Constant to define which tab is currently selected
-  int _selectedIndex = 0;
+  int    _selectedIndex = 0;
+  Timer? _alarmChecker;
 
-  // Widgets for each tab statically defined in a list by index
-  static const List<Widget> _tabs = [
-    WorldClockTab(),
-    AlarmsTab(),
-    StopwatchTab(),
-    TimerTab(),
-  ];
+  // GlobalKey gives us access to AlarmsTab's state from outside the widget.
+  // This lets HomeScreen call checkAlarms() on the alarms tab regardless
+  // of which tab is currently visible.
+  final GlobalKey<AlarmsTabState> _alarmsKey = GlobalKey<AlarmsTabState>();
 
-  // Functionality for which tab is pressed
-  void _onItemTapped(int index) {
-    // Update Flutter when data changes, and to rebuild (setState())
-    setState(() {
-      _selectedIndex = index;     // Update to selected tab's index
+  @override
+  void initState() {
+    super.initState();
+    _alarmChecker = Timer.periodic(const Duration(seconds: 30), (_) {
+      _alarmsKey.currentState?.checkAlarms();
     });
   }
 
   @override
+  void dispose() {
+    _alarmChecker?.cancel();
+    super.dispose();
+  }
+
+  void _onItemTapped(int index) {
+    setState(() => _selectedIndex = index);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // WHY IndexedStack instead of tabs[_selectedIndex]?
+    //
+    // With `body: tabs[_selectedIndex]`, Flutter unmounts the widget that
+    // was previously visible and mounts the new one. That means the
+    // StopwatchTab's State object is destroyed — killing its Timer — every
+    // time the user switches away. IndexedStack keeps ALL tab widgets
+    // mounted at once (just hidden), so their State objects (and Timers)
+    // live for the entire app session.
+    //
+    // AutomaticKeepAliveClientMixin in each tab also helps, but
+    // IndexedStack is simpler and more reliable for this use-case.
+
     return Scaffold(
-      // Display the Widget of the active tab based on index
-      body: _tabs[_selectedIndex],
-
-      // Define the functionality of the bottom nav bar
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          const WorldClockTab(),
+          AlarmsTab(key: _alarmsKey),
+          const StopwatchTab(),
+          const TimerTab(),
+        ],
+      ),
       bottomNavigationBar: BottomNavigationBar(
-        // Current page/index
         currentIndex: _selectedIndex,
-        // When item is tapped...
-        onTap: _onItemTapped,
-
-        // Define items with icons and labels in the bottom nav bar
+        onTap:        _onItemTapped,
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.public),
-            label: 'World Clock',
-          ),
+              icon: Icon(Icons.public),                    label: 'World Clock'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.alarm),
-            label: 'Alarms',
-          ),
+              icon: Icon(Icons.alarm),                     label: 'Alarms'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.timer_outlined),
-            label: 'Stopwatch',
-          ),
+              icon: Icon(Icons.timer_outlined),            label: 'Stopwatch'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.hourglass_bottom_outlined),
-            label: 'Timer',
-          ),
+              icon: Icon(Icons.hourglass_bottom_outlined), label: 'Timer'),
         ],
       ),
     );
